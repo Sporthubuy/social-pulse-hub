@@ -91,6 +91,25 @@ export default function SalesDashboard() {
   // Calculate best performing channel
   const topChannel = summary?.salesByChannel[0];
 
+  // Build monthly chart data with total and per-channel breakdown
+  const getMonthlyChartData = () => {
+    if (!summary) return [];
+    
+    return summary.salesByMonth.map(({ month, amount }) => {
+      const dataPoint: Record<string, string | number> = {
+        month,
+        total: amount,
+      };
+      
+      // Add each channel's data for this month
+      summary.channelDetails.forEach((channel) => {
+        dataPoint[channel.channel] = channel.monthlyData[month] || 0;
+      });
+      
+      return dataPoint;
+    });
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6 animate-fade-in">
@@ -139,14 +158,14 @@ export default function SalesDashboard() {
           />
         </div>
 
-        {/* Sales by Month Chart */}
+        {/* Sales by Month Chart - Total + By Channel */}
         <div className="bg-card rounded-xl border border-border p-5">
           <h3 className="text-lg font-display font-semibold text-foreground mb-4">
             Ventas por Mes
           </h3>
-          <div className="h-72">
+          <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={summary?.salesByMonth || []}>
+              <LineChart data={getMonthlyChartData()}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                 <XAxis
                   dataKey="month"
@@ -164,16 +183,35 @@ export default function SalesDashboard() {
                     borderRadius: '8px',
                   }}
                   labelStyle={{ color: '#F9FAFB' }}
-                  formatter={(value: number) => [formatCurrency(value), 'Ventas']}
+                  formatter={(value: number, name: string) => [formatCurrency(value), name]}
                 />
+                <Legend 
+                  wrapperStyle={{ fontSize: '11px' }}
+                  iconType="line"
+                />
+                {/* Total line - thicker and prominent */}
                 <Line
                   type="monotone"
-                  dataKey="amount"
-                  stroke="#3B82F6"
+                  dataKey="total"
+                  name="Total"
+                  stroke="#10B981"
                   strokeWidth={3}
-                  dot={{ fill: '#3B82F6', strokeWidth: 2, r: 4 }}
-                  activeDot={{ r: 6, fill: '#60A5FA' }}
+                  dot={{ fill: '#10B981', strokeWidth: 2, r: 4 }}
+                  activeDot={{ r: 6, fill: '#34D399' }}
                 />
+                {/* Channel lines */}
+                {summary?.channelDetails.map((channel) => (
+                  <Line
+                    key={channel.channel}
+                    type="monotone"
+                    dataKey={channel.channel}
+                    name={channel.channel}
+                    stroke={channel.color}
+                    strokeWidth={1.5}
+                    dot={false}
+                    strokeDasharray="3 3"
+                  />
+                ))}
               </LineChart>
             </ResponsiveContainer>
           </div>
