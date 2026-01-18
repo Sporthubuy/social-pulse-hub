@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Package, AlertTriangle, XCircle, RefreshCw, TrendingDown } from 'lucide-react';
+import { Package, AlertTriangle, DollarSign, RefreshCw, MapPin, Search } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { MetricCard } from '@/components/dashboard/MetricCard';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import {
   fetchStockData,
-  calculateStockSummary,
   type StockItem,
   type StockSummary,
 } from '@/services/google-sheets';
@@ -21,7 +21,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  Legend,
 } from 'recharts';
 
 const BRAND_COLORS: Record<string, string> = {
@@ -30,24 +29,29 @@ const BRAND_COLORS: Record<string, string> = {
   'Princess': '#EC4899',
 };
 
-const CATEGORY_COLORS = ['#3B82F6', '#F59E0B', '#EC4899', '#10B981', '#8B5CF6', '#6B7280'];
+const LOCATION_COLORS = ['#3B82F6', '#F59E0B', '#EC4899', '#10B981', '#8B5CF6', '#6B7280', '#EF4444'];
 
 export default function StockDashboard() {
-  const [stockData, setStockData] = useState<StockItem[]>([]);
   const [summary, setSummary] = useState<StockSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedBrand, setSelectedBrand] = useState<string>('all');
   const { toast } = useToast();
 
   const loadData = async () => {
     setIsLoading(true);
     try {
       const data = await fetchStockData();
-      setStockData(data);
-      setSummary(calculateStockSummary(data));
+      setSummary(data);
+      toast({
+        title: 'Datos cargados',
+        description: `${data.totalProducts} productos encontrados`,
+      });
     } catch (error) {
+      console.error('Error loading stock:', error);
       toast({
         title: 'Error',
-        description: 'No se pudieron cargar los datos de stock',
+        description: 'No se pudieron cargar los datos de stock. Verifica que el Sheet sea publico.',
         variant: 'destructive',
       });
     } finally {
@@ -67,6 +71,28 @@ export default function StockDashboard() {
     loadData();
   };
 
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('es-AR', {
+      style: 'currency',
+      currency: 'ARS',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(value);
+  };
+
+  const formatNumber = (num: number) => {
+    return new Intl.NumberFormat('es-AR').format(num);
+  };
+
+  // Filter products
+  const filteredProducts = summary?.allProducts.filter(product => {
+    const matchesSearch = searchTerm === '' ||
+      product.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.itemCode.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesBrand = selectedBrand === 'all' || product.brand === selectedBrand;
+    return matchesSearch && matchesBrand;
+  }) || [];
+
   return (
     <DashboardLayout>
       <div className="space-y-6 animate-fade-in">
@@ -77,7 +103,7 @@ export default function StockDashboard() {
               Stock
             </h1>
             <p className="text-muted-foreground mt-1">
-              Control de inventario en tiempo real
+              Control de inventario - Magic Marine, Brabo y Princess
             </p>
           </div>
           <Button
@@ -99,19 +125,19 @@ export default function StockDashboard() {
             icon={<Package className="w-5 h-5" />}
           />
           <MetricCard
+            title="Valor en Stock"
+            value={summary ? formatCurrency(summary.totalStockValue) : '-'}
+            icon={<DollarSign className="w-5 h-5" />}
+          />
+          <MetricCard
             title="Stock Bajo"
-            value={summary?.lowStockItems.toString() || '-'}
+            value={summary?.lowStockProducts.length.toString() || '-'}
             icon={<AlertTriangle className="w-5 h-5 text-yellow-500" />}
           />
           <MetricCard
-            title="Sin Stock"
-            value={summary?.outOfStockItems.toString() || '-'}
-            icon={<XCircle className="w-5 h-5 text-red-500" />}
-          />
-          <MetricCard
-            title="Marcas"
-            value={summary?.stockByBrand.length.toString() || '-'}
-            icon={<TrendingDown className="w-5 h-5" />}
+            title="Ubicaciones"
+            value={summary?.stockByLocation.length.toString() || '-'}
+            icon={<MapPin className="w-5 h-5" />}
           />
         </div>
 
@@ -120,14 +146,17 @@ export default function StockDashboard() {
           {/* Stock by Brand */}
           <div className="bg-card rounded-xl border border-border p-5">
             <h3 className="text-lg font-display font-semibold text-foreground mb-4">
-              Stock por Marca
+              Stock por Marca (Valor)
             </h3>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={summary?.stockByBrand || []}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                   <XAxis dataKey="brand" tick={{ fill: '#9CA3AF', fontSize: 12 }} />
-                  <YAxis tick={{ fill: '#9CA3AF', fontSize: 12 }} />
+                  <YAxis
+                    tick={{ fill: '#9CA3AF', fontSize: 12 }}
+                    tickFormatter={(value) => `$${(value / 1000000).toFixed(1)}M`}
+                  />
                   <Tooltip
                     contentStyle={{
                       backgroundColor: '#1F2937',
@@ -135,8 +164,9 @@ export default function StockDashboard() {
                       borderRadius: '8px',
                     }}
                     labelStyle={{ color: '#F9FAFB' }}
+                    formatter={(value: number) => [formatCurrency(value), 'Valor']}
                   />
-                  <Bar dataKey="quantity" name="Cantidad">
+                  <Bar dataKey="value" name="Valor">
                     {summary?.stockByBrand.map((entry, index) => (
                       <Cell
                         key={`cell-${index}`}
@@ -149,32 +179,32 @@ export default function StockDashboard() {
             </div>
           </div>
 
-          {/* Stock by Category */}
+          {/* Stock by Location */}
           <div className="bg-card rounded-xl border border-border p-5">
             <h3 className="text-lg font-display font-semibold text-foreground mb-4">
-              Stock por Categoria
+              Stock por Ubicacion
             </h3>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={summary?.stockByCategory || []}
+                    data={summary?.stockByLocation || []}
                     cx="50%"
                     cy="50%"
                     innerRadius={40}
                     outerRadius={80}
-                    paddingAngle={5}
+                    paddingAngle={3}
                     dataKey="quantity"
-                    nameKey="category"
-                    label={({ category, percent }) =>
-                      `${category} ${(percent * 100).toFixed(0)}%`
+                    nameKey="location"
+                    label={({ location, percent }) =>
+                      percent > 0.05 ? `${location} ${(percent * 100).toFixed(0)}%` : ''
                     }
                     labelLine={false}
                   >
-                    {summary?.stockByCategory.map((_, index) => (
+                    {summary?.stockByLocation.map((_, index) => (
                       <Cell
                         key={`cell-${index}`}
-                        fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]}
+                        fill={LOCATION_COLORS[index % LOCATION_COLORS.length]}
                       />
                     ))}
                   </Pie>
@@ -184,6 +214,7 @@ export default function StockDashboard() {
                       border: '1px solid #374151',
                       borderRadius: '8px',
                     }}
+                    formatter={(value: number) => [formatNumber(value), 'Unidades']}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -192,113 +223,110 @@ export default function StockDashboard() {
         </div>
 
         {/* Low Stock Alert Table */}
-        <div className="bg-card rounded-xl border border-border p-5">
-          <h3 className="text-lg font-display font-semibold text-foreground mb-4">
-            Productos con Stock Bajo
-          </h3>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
-                    Producto
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
-                    SKU
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
-                    Marca
-                  </th>
-                  <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">
-                    Stock Actual
-                  </th>
-                  <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">
-                    Stock Minimo
-                  </th>
-                  <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">
-                    Estado
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {summary?.lowStockProducts.map((item) => (
-                  <tr key={item.id} className="border-b border-border/50 hover:bg-muted/50">
-                    <td className="py-3 px-4 text-sm text-foreground">{item.product}</td>
-                    <td className="py-3 px-4 text-sm text-muted-foreground">{item.sku}</td>
-                    <td className="py-3 px-4">
-                      <span
-                        className="text-xs px-2 py-1 rounded-full"
-                        style={{
-                          backgroundColor: `${BRAND_COLORS[item.brand] || '#6B7280'}20`,
-                          color: BRAND_COLORS[item.brand] || '#6B7280',
-                        }}
-                      >
-                        {item.brand}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-center text-sm font-semibold text-foreground">
-                      {item.quantity}
-                    </td>
-                    <td className="py-3 px-4 text-center text-sm text-muted-foreground">
-                      {item.minStock}
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      {item.quantity === 0 ? (
-                        <span className="text-xs px-2 py-1 rounded-full bg-red-500/20 text-red-500">
-                          Sin Stock
-                        </span>
-                      ) : (
-                        <span className="text-xs px-2 py-1 rounded-full bg-yellow-500/20 text-yellow-500">
-                          Stock Bajo
-                        </span>
-                      )}
-                    </td>
+        {summary && summary.lowStockProducts.length > 0 && (
+          <div className="bg-card rounded-xl border border-border p-5">
+            <h3 className="text-lg font-display font-semibold text-foreground mb-4 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-yellow-500" />
+              Productos con Stock Bajo (≤3 unidades)
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Codigo</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Producto</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Talle</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Marca</th>
+                    <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">Stock</th>
                   </tr>
-                ))}
-                {(!summary?.lowStockProducts || summary.lowStockProducts.length === 0) && (
-                  <tr>
-                    <td colSpan={6} className="py-8 text-center text-muted-foreground">
-                      No hay productos con stock bajo
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {summary.lowStockProducts.map((item) => (
+                    <tr key={item.id} className="border-b border-border/50 hover:bg-muted/50">
+                      <td className="py-3 px-4 text-sm text-muted-foreground font-mono">{item.itemCode}</td>
+                      <td className="py-3 px-4 text-sm text-foreground">{item.description}</td>
+                      <td className="py-3 px-4 text-sm text-muted-foreground">{item.size}</td>
+                      <td className="py-3 px-4">
+                        <span
+                          className="text-xs px-2 py-1 rounded-full"
+                          style={{
+                            backgroundColor: `${BRAND_COLORS[item.brand] || '#6B7280'}20`,
+                            color: BRAND_COLORS[item.brand] || '#6B7280',
+                          }}
+                        >
+                          {item.brand}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className="text-sm font-semibold text-yellow-500">
+                          {item.totalStock}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Full Inventory Table */}
         <div className="bg-card rounded-xl border border-border p-5">
-          <h3 className="text-lg font-display font-semibold text-foreground mb-4">
-            Inventario Completo
-          </h3>
-          <div className="overflow-x-auto">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+            <h3 className="text-lg font-display font-semibold text-foreground">
+              Inventario Completo
+            </h3>
+            <div className="flex items-center gap-2">
+              {/* Search */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar producto..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9 w-48"
+                />
+              </div>
+              {/* Brand filter */}
+              <select
+                value={selectedBrand}
+                onChange={(e) => setSelectedBrand(e.target.value)}
+                className="px-3 py-2 text-sm rounded-md border border-border bg-background text-foreground"
+              >
+                <option value="all">Todas las marcas</option>
+                <option value="Magic Marine">Magic Marine</option>
+                <option value="Brabo">Brabo</option>
+                <option value="Princess">Princess</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="text-sm text-muted-foreground mb-3">
+            Mostrando {filteredProducts.length} de {summary?.totalProducts || 0} productos
+          </div>
+
+          <div className="overflow-x-auto max-h-96">
             <table className="w-full">
-              <thead>
+              <thead className="sticky top-0 bg-card">
                 <tr className="border-b border-border">
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
-                    Producto
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
-                    SKU
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
-                    Categoria
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
-                    Marca
-                  </th>
-                  <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">
-                    Cantidad
-                  </th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Codigo</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Producto</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Talle</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Marca</th>
+                  <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">Stock</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Costo</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Precio</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Ventas</th>
                 </tr>
               </thead>
               <tbody>
-                {stockData.map((item) => (
+                {filteredProducts.slice(0, 100).map((item) => (
                   <tr key={item.id} className="border-b border-border/50 hover:bg-muted/50">
-                    <td className="py-3 px-4 text-sm text-foreground">{item.product}</td>
-                    <td className="py-3 px-4 text-sm text-muted-foreground">{item.sku}</td>
-                    <td className="py-3 px-4 text-sm text-muted-foreground">{item.category}</td>
+                    <td className="py-3 px-4 text-sm text-muted-foreground font-mono">{item.itemCode}</td>
+                    <td className="py-3 px-4 text-sm text-foreground max-w-xs truncate" title={item.description}>
+                      {item.description}
+                    </td>
+                    <td className="py-3 px-4 text-sm text-muted-foreground">{item.size}</td>
                     <td className="py-3 px-4">
                       <span
                         className="text-xs px-2 py-1 rounded-full"
@@ -313,20 +341,34 @@ export default function StockDashboard() {
                     <td className="py-3 px-4 text-center">
                       <span
                         className={`font-semibold ${
-                          item.quantity === 0
+                          item.totalStock === 0
                             ? 'text-red-500'
-                            : item.quantity <= item.minStock
+                            : item.totalStock <= 3
                             ? 'text-yellow-500'
                             : 'text-foreground'
                         }`}
                       >
-                        {item.quantity}
+                        {item.totalStock}
                       </span>
+                    </td>
+                    <td className="py-3 px-4 text-right text-sm text-muted-foreground">
+                      {formatCurrency(item.costoUnitario)}
+                    </td>
+                    <td className="py-3 px-4 text-right text-sm text-foreground font-medium">
+                      {formatCurrency(item.precio)}
+                    </td>
+                    <td className="py-3 px-4 text-right text-sm text-green-500 font-medium">
+                      {formatCurrency(item.ventaTotal)}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            {filteredProducts.length > 100 && (
+              <div className="text-center py-4 text-sm text-muted-foreground">
+                Mostrando primeros 100 productos. Usa el buscador para filtrar.
+              </div>
+            )}
           </div>
         </div>
       </div>

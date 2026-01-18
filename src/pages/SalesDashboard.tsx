@@ -1,14 +1,12 @@
 import { useState, useEffect } from 'react';
-import { DollarSign, ShoppingCart, TrendingUp, RefreshCw, Calendar } from 'lucide-react';
+import { DollarSign, TrendingUp, RefreshCw, BarChart3 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { MetricCard } from '@/components/dashboard/MetricCard';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import {
   fetchSalesData,
-  calculateSalesSummary,
   SALES_CHANNELS,
-  type SaleRecord,
   type SalesSummary,
 } from '@/services/google-sheets';
 import {
@@ -25,29 +23,33 @@ import {
   Legend,
   LineChart,
   Line,
-  AreaChart,
-  Area,
 } from 'recharts';
 
-type DateFilter = '7d' | '30d' | '90d' | 'all';
+const BRAND_COLORS: Record<string, string> = {
+  'Magic Marine': '#3B82F6',
+  'Brabo': '#F59E0B',
+  'Princess': '#EC4899',
+};
 
 export default function SalesDashboard() {
-  const [salesData, setSalesData] = useState<SaleRecord[]>([]);
-  const [filteredData, setFilteredData] = useState<SaleRecord[]>([]);
   const [summary, setSummary] = useState<SalesSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [dateFilter, setDateFilter] = useState<DateFilter>('30d');
   const { toast } = useToast();
 
   const loadData = async () => {
     setIsLoading(true);
     try {
       const data = await fetchSalesData();
-      setSalesData(data);
+      setSummary(data);
+      toast({
+        title: 'Datos cargados',
+        description: `${data.salesByChannel.length} canales con datos`,
+      });
     } catch (error) {
+      console.error('Error loading sales:', error);
       toast({
         title: 'Error',
-        description: 'No se pudieron cargar los datos de ventas',
+        description: 'No se pudieron cargar los datos de ventas. Verifica que el Sheet sea publico.',
         variant: 'destructive',
       });
     } finally {
@@ -58,23 +60,6 @@ export default function SalesDashboard() {
   useEffect(() => {
     loadData();
   }, []);
-
-  useEffect(() => {
-    // Filter data by date
-    const now = new Date();
-    let filtered = salesData;
-
-    if (dateFilter !== 'all') {
-      const days = dateFilter === '7d' ? 7 : dateFilter === '30d' ? 30 : 90;
-      const cutoff = new Date(now);
-      cutoff.setDate(cutoff.getDate() - days);
-
-      filtered = salesData.filter(sale => new Date(sale.date) >= cutoff);
-    }
-
-    setFilteredData(filtered);
-    setSummary(calculateSalesSummary(filtered));
-  }, [salesData, dateFilter]);
 
   const handleRefresh = () => {
     toast({
@@ -89,18 +74,22 @@ export default function SalesDashboard() {
       style: 'currency',
       currency: 'ARS',
       minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     }).format(value);
   };
 
-  const formatNumber = (num: number) => {
-    if (num >= 1000000) {
-      return (num / 1000000).toFixed(1) + 'M';
+  const formatShortCurrency = (value: number) => {
+    if (value >= 1000000) {
+      return `$${(value / 1000000).toFixed(1)}M`;
     }
-    if (num >= 1000) {
-      return (num / 1000).toFixed(1) + 'K';
+    if (value >= 1000) {
+      return `$${(value / 1000).toFixed(0)}K`;
     }
-    return num.toString();
+    return `$${value}`;
   };
+
+  // Calculate best performing channel
+  const topChannel = summary?.salesByChannel[0];
 
   return (
     <DashboardLayout>
@@ -112,36 +101,18 @@ export default function SalesDashboard() {
               Facturacion
             </h1>
             <p className="text-muted-foreground mt-1">
-              Analisis de ventas por canal
+              Analisis de ventas por canal y marca
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            {/* Date Filter */}
-            <div className="flex bg-muted rounded-lg p-1">
-              {(['7d', '30d', '90d', 'all'] as DateFilter[]).map((filter) => (
-                <button
-                  key={filter}
-                  onClick={() => setDateFilter(filter)}
-                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                    dateFilter === filter
-                      ? 'bg-background text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {filter === '7d' ? '7 dias' : filter === '30d' ? '30 dias' : filter === '90d' ? '90 dias' : 'Todo'}
-                </button>
-              ))}
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={isLoading}
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              Actualizar
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Actualizar
+          </Button>
         </div>
 
         {/* Metrics Grid */}
@@ -152,48 +123,39 @@ export default function SalesDashboard() {
             icon={<DollarSign className="w-5 h-5" />}
           />
           <MetricCard
-            title="Ordenes"
-            value={summary?.totalOrders.toString() || '-'}
-            icon={<ShoppingCart className="w-5 h-5" />}
-          />
-          <MetricCard
-            title="Ticket Promedio"
-            value={summary ? formatCurrency(summary.averageOrderValue) : '-'}
-            icon={<TrendingUp className="w-5 h-5" />}
-          />
-          <MetricCard
             title="Canales Activos"
-            value={summary?.salesByChannel.length.toString() || '-'}
-            icon={<Calendar className="w-5 h-5" />}
+            value={summary?.salesByChannel.filter(c => c.amount > 0).length.toString() || '-'}
+            icon={<BarChart3 className="w-5 h-5" />}
+          />
+          <MetricCard
+            title="Mejor Canal"
+            value={topChannel?.channel.split(' ').slice(-1)[0] || '-'}
+            icon={<TrendingUp className="w-5 h-5 text-green-500" />}
+          />
+          <MetricCard
+            title="Marcas"
+            value={summary?.salesByBrand.length.toString() || '-'}
+            icon={<BarChart3 className="w-5 h-5" />}
           />
         </div>
 
-        {/* Sales Over Time Chart */}
+        {/* Sales by Month Chart */}
         <div className="bg-card rounded-xl border border-border p-5">
           <h3 className="text-lg font-display font-semibold text-foreground mb-4">
-            Ventas en el Tiempo
+            Ventas por Mes
           </h3>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={summary?.salesByDate || []}>
-                <defs>
-                  <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
+              <LineChart data={summary?.salesByMonth || []}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                 <XAxis
-                  dataKey="date"
+                  dataKey="month"
                   tick={{ fill: '#9CA3AF', fontSize: 11 }}
-                  tickFormatter={(value) => {
-                    const date = new Date(value);
-                    return `${date.getDate()}/${date.getMonth() + 1}`;
-                  }}
+                  tickFormatter={(value) => value.substring(0, 3)}
                 />
                 <YAxis
                   tick={{ fill: '#9CA3AF', fontSize: 11 }}
-                  tickFormatter={(value) => formatNumber(value)}
+                  tickFormatter={(value) => formatShortCurrency(value)}
                 />
                 <Tooltip
                   contentStyle={{
@@ -203,20 +165,16 @@ export default function SalesDashboard() {
                   }}
                   labelStyle={{ color: '#F9FAFB' }}
                   formatter={(value: number) => [formatCurrency(value), 'Ventas']}
-                  labelFormatter={(label) => {
-                    const date = new Date(label);
-                    return date.toLocaleDateString('es-AR');
-                  }}
                 />
-                <Area
+                <Line
                   type="monotone"
                   dataKey="amount"
                   stroke="#3B82F6"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorSales)"
+                  strokeWidth={3}
+                  dot={{ fill: '#3B82F6', strokeWidth: 2, r: 4 }}
+                  activeDot={{ r: 6, fill: '#60A5FA' }}
                 />
-              </AreaChart>
+              </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
@@ -233,19 +191,19 @@ export default function SalesDashboard() {
                 <BarChart
                   data={summary?.salesByChannel || []}
                   layout="vertical"
-                  margin={{ left: 20 }}
+                  margin={{ left: 10, right: 10 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                   <XAxis
                     type="number"
                     tick={{ fill: '#9CA3AF', fontSize: 11 }}
-                    tickFormatter={(value) => formatNumber(value)}
+                    tickFormatter={(value) => formatShortCurrency(value)}
                   />
                   <YAxis
                     type="category"
                     dataKey="channel"
-                    tick={{ fill: '#9CA3AF', fontSize: 10 }}
-                    width={150}
+                    tick={{ fill: '#9CA3AF', fontSize: 9 }}
+                    width={130}
                   />
                   <Tooltip
                     contentStyle={{
@@ -318,14 +276,11 @@ export default function SalesDashboard() {
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
                     Canal
                   </th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">
-                    Ventas
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
+                    Marca
                   </th>
                   <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">
-                    Ordenes
-                  </th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">
-                    Ticket Promedio
+                    Ventas Totales
                   </th>
                   <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">
                     % del Total
@@ -347,14 +302,19 @@ export default function SalesDashboard() {
                         <span className="text-sm text-foreground">{channel.channel}</span>
                       </div>
                     </td>
+                    <td className="py-3 px-4">
+                      <span
+                        className="text-xs px-2 py-1 rounded-full"
+                        style={{
+                          backgroundColor: `${BRAND_COLORS[channel.brand] || '#6B7280'}20`,
+                          color: BRAND_COLORS[channel.brand] || '#6B7280',
+                        }}
+                      >
+                        {channel.brand}
+                      </span>
+                    </td>
                     <td className="py-3 px-4 text-right text-sm font-semibold text-foreground">
                       {formatCurrency(channel.amount)}
-                    </td>
-                    <td className="py-3 px-4 text-right text-sm text-muted-foreground">
-                      {channel.orders}
-                    </td>
-                    <td className="py-3 px-4 text-right text-sm text-muted-foreground">
-                      {formatCurrency(channel.orders > 0 ? channel.amount / channel.orders : 0)}
                     </td>
                     <td className="py-3 px-4 text-right text-sm text-muted-foreground">
                       {summary.totalSales > 0
@@ -369,14 +329,9 @@ export default function SalesDashboard() {
                 <tfoot>
                   <tr className="bg-muted/30">
                     <td className="py-3 px-4 text-sm font-semibold text-foreground">Total</td>
+                    <td className="py-3 px-4"></td>
                     <td className="py-3 px-4 text-right text-sm font-semibold text-foreground">
                       {formatCurrency(summary.totalSales)}
-                    </td>
-                    <td className="py-3 px-4 text-right text-sm font-semibold text-foreground">
-                      {summary.totalOrders}
-                    </td>
-                    <td className="py-3 px-4 text-right text-sm font-semibold text-foreground">
-                      {formatCurrency(summary.averageOrderValue)}
                     </td>
                     <td className="py-3 px-4 text-right text-sm font-semibold text-foreground">
                       100%
@@ -388,49 +343,87 @@ export default function SalesDashboard() {
           </div>
         </div>
 
-        {/* Top Products */}
-        <div className="bg-card rounded-xl border border-border p-5">
-          <h3 className="text-lg font-display font-semibold text-foreground mb-4">
-            Productos Mas Vendidos
-          </h3>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
-                    #
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
-                    Producto
-                  </th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">
-                    Cantidad
-                  </th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">
-                    Ventas
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {summary?.topProducts.map((product, index) => (
-                  <tr
-                    key={product.product}
-                    className="border-b border-border/50 hover:bg-muted/50"
-                  >
-                    <td className="py-3 px-4 text-sm text-muted-foreground">{index + 1}</td>
-                    <td className="py-3 px-4 text-sm text-foreground">{product.product}</td>
-                    <td className="py-3 px-4 text-right text-sm text-muted-foreground">
-                      {product.quantity}
+        {/* Monthly Breakdown Table */}
+        {summary && summary.channelDetails.length > 0 && (
+          <div className="bg-card rounded-xl border border-border p-5">
+            <h3 className="text-lg font-display font-semibold text-foreground mb-4">
+              Desglose Mensual por Canal
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground sticky left-0 bg-card">
+                      Canal
+                    </th>
+                    {summary.salesByMonth.map(({ month }) => (
+                      <th
+                        key={month}
+                        className="text-right py-3 px-3 text-sm font-medium text-muted-foreground min-w-[80px]"
+                      >
+                        {month.substring(0, 3)}
+                      </th>
+                    ))}
+                    <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">
+                      Total
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.channelDetails.map((channel) => (
+                    <tr
+                      key={channel.channel}
+                      className="border-b border-border/50 hover:bg-muted/50"
+                    >
+                      <td className="py-3 px-4 sticky left-0 bg-card">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: channel.color }}
+                          />
+                          <span className="text-xs text-foreground truncate max-w-[120px]">
+                            {channel.channel}
+                          </span>
+                        </div>
+                      </td>
+                      {summary.salesByMonth.map(({ month }) => (
+                        <td
+                          key={month}
+                          className="py-3 px-3 text-right text-xs text-muted-foreground"
+                        >
+                          {channel.monthlyData[month]
+                            ? formatShortCurrency(channel.monthlyData[month])
+                            : '-'}
+                        </td>
+                      ))}
+                      <td className="py-3 px-4 text-right text-sm font-semibold text-foreground">
+                        {formatShortCurrency(channel.total)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-muted/30">
+                    <td className="py-3 px-4 text-sm font-semibold text-foreground sticky left-0 bg-muted/30">
+                      Total
                     </td>
-                    <td className="py-3 px-4 text-right text-sm font-semibold text-foreground">
-                      {formatCurrency(product.amount)}
+                    {summary.salesByMonth.map(({ month, amount }) => (
+                      <td
+                        key={month}
+                        className="py-3 px-3 text-right text-xs font-semibold text-foreground"
+                      >
+                        {formatShortCurrency(amount)}
+                      </td>
+                    ))}
+                    <td className="py-3 px-4 text-right text-sm font-bold text-foreground">
+                      {formatShortCurrency(summary.totalSales)}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </tfoot>
+              </table>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </DashboardLayout>
   );
