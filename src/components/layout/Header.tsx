@@ -15,7 +15,7 @@ import {
 
 export function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { user, signOut } = useAuth();
+  const { user, profile, role, signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
 
@@ -76,15 +76,15 @@ export function Header() {
                     <User className="w-4 h-4 text-primary" />
                   </div>
                   <span className="hidden sm:block text-sm font-medium max-w-[120px] truncate">
-                    {user.fullName}
+                    {profile?.full_name || user.email}
                   </span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56 bg-popover">
                 <div className="px-3 py-2">
-                  <p className="text-sm font-medium">{user.fullName}</p>
+                  <p className="text-sm font-medium">{profile?.full_name || user.email}</p>
                   <p className="text-xs text-muted-foreground">{user.email}</p>
-                  {user.role === 'superadmin' && (
+                  {role === 'superadmin' && (
                     <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 text-xs bg-primary/20 text-primary rounded-full">
                       <Shield className="w-3 h-3" />
                       Super Admin

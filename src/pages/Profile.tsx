@@ -1,32 +1,54 @@
-import { useState } from 'react';
-import { User, Mail, Shield, Calendar, Camera, Save, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { User, Mail, Shield, Calendar, Save, Loader2 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function Profile() {
-  const { user } = useAuth();
+  const { user, profile, role } = useAuth();
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState({
-    fullName: user?.fullName || '',
-    email: user?.email || '',
+    fullName: '',
   });
 
+  useEffect(() => {
+    if (profile) {
+      setFormData({ fullName: profile.full_name || '' });
+    }
+  }, [profile]);
+
   const handleSave = async () => {
+    if (!user) return;
+    
     setIsSaving(true);
-    // Simulate save - replace with actual Supabase update
-    await new Promise(resolve => setTimeout(resolve, 800));
-    setIsSaving(false);
-    setIsEditing(false);
-    toast({
-      title: 'Perfil actualizado',
-      description: 'Tus cambios han sido guardados',
-    });
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ full_name: formData.fullName })
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      setIsEditing(false);
+      toast({
+        title: 'Perfil actualizado',
+        description: 'Tus cambios han sido guardados',
+      });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'No se pudo guardar los cambios',
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   if (!user) return null;
@@ -83,7 +105,7 @@ export default function Profile() {
 
           <div className="pt-14 p-6 space-y-6">
             {/* Role badge */}
-            {user.role === 'superadmin' && (
+            {role === 'superadmin' && (
               <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/10 text-primary rounded-full text-sm font-medium">
                 <Shield className="w-4 h-4" />
                 Super Administrador
@@ -98,7 +120,7 @@ export default function Profile() {
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
                     id="fullName"
-                    value={isEditing ? formData.fullName : user.fullName}
+                    value={isEditing ? formData.fullName : (profile?.full_name || '')}
                     onChange={(e) => setFormData(prev => ({ ...prev, fullName: e.target.value }))}
                     disabled={!isEditing}
                     className="pl-10"
@@ -113,7 +135,7 @@ export default function Profile() {
                   <Input
                     id="email"
                     type="email"
-                    value={user.email}
+                    value={user.email || ''}
                     disabled
                     className="pl-10"
                   />
@@ -125,7 +147,7 @@ export default function Profile() {
                 <Label>Rol</Label>
                 <div className="flex items-center gap-2 h-10 px-3 bg-muted rounded-lg text-sm">
                   <Shield className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-foreground capitalize">{user.role}</span>
+                  <span className="text-foreground capitalize">{role}</span>
                 </div>
               </div>
 
@@ -134,11 +156,11 @@ export default function Profile() {
                 <div className="flex items-center gap-2 h-10 px-3 bg-muted rounded-lg text-sm">
                   <Calendar className="w-4 h-4 text-muted-foreground" />
                   <span className="text-foreground">
-                    {new Date(user.createdAt).toLocaleDateString('es-ES', {
+                    {user.created_at ? new Date(user.created_at).toLocaleDateString('es-ES', {
                       year: 'numeric',
                       month: 'long',
                       day: 'numeric',
-                    })}
+                    }) : '-'}
                   </span>
                 </div>
               </div>
@@ -147,7 +169,7 @@ export default function Profile() {
         </div>
 
         {/* Danger Zone for Super Admin */}
-        {user.role === 'superadmin' && (
+        {role === 'superadmin' && (
           <div className="bg-destructive/5 border border-destructive/20 rounded-xl p-6">
             <h3 className="text-lg font-display font-semibold text-foreground mb-2">
               Panel de Administración
