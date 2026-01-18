@@ -9,6 +9,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Profile from "./pages/Profile";
+import MetaCallback from "./pages/MetaCallback";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,6 +28,7 @@ const App = () => (
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/dashboard/instagram" element={<Dashboard />} />
               <Route path="/dashboard/facebook" element={<Dashboard />} />
+              <Route path="/auth/callback/meta" element={<MetaCallback />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/settings" element={<Profile />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
