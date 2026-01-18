@@ -4,12 +4,69 @@
 const GRAPH_API_VERSION = 'v18.0';
 const GRAPH_API_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
 
-// Instagram Business Account ID (sporthubuy)
-const INSTAGRAM_ACCOUNT_ID = '17841480089330113';
+// Meta App ID
+const META_APP_ID = '737036405756823';
 
-// Access token from Meta Developer Console
-// In production, this should be stored securely and refreshed before expiration
-const INSTAGRAM_ACCESS_TOKEN = import.meta.env.VITE_INSTAGRAM_ACCESS_TOKEN || 'IGAAKeVKkm05dBZAGFsSkRiRGljUEUxd0MyS1dPaldQN0JJdGJHVjItRl9oQWZAlMk1xeWRpX1pTN29DQmVnTlRNZAEdsYkVfZA2k3Q08xZA2JfeUNHcGlISzZAGNkxIaEQzTHNwVVVEMkxLTHBBVkpHMlZAuMjNjNXdsbjFDMFhtTTJBbwZDZD';
+// Access token from environment variable (stored securely)
+const INSTAGRAM_ACCESS_TOKEN = import.meta.env.VITE_INSTAGRAM_ACCESS_TOKEN || '';
+
+// Function to get Instagram Business Account ID from the token
+let cachedAccountId: string | null = null;
+
+async function getInstagramAccountId(): Promise<string> {
+  if (cachedAccountId) return cachedAccountId;
+  
+  try {
+    // First get the Facebook pages connected to this token
+    const pagesResponse = await fetch(
+      `${GRAPH_API_BASE}/me/accounts?` +
+      new URLSearchParams({
+        access_token: INSTAGRAM_ACCESS_TOKEN,
+      })
+    );
+    
+    if (!pagesResponse.ok) {
+      throw new Error('Failed to get Facebook pages');
+    }
+    
+    const pagesData = await pagesResponse.json();
+    const pages = pagesData.data || [];
+    
+    if (pages.length === 0) {
+      throw new Error('No Facebook pages found');
+    }
+    
+    // Get Instagram Business Account connected to the first page
+    const pageId = pages[0].id;
+    const pageAccessToken = pages[0].access_token;
+    
+    const igResponse = await fetch(
+      `${GRAPH_API_BASE}/${pageId}?` +
+      new URLSearchParams({
+        fields: 'instagram_business_account',
+        access_token: pageAccessToken,
+      })
+    );
+    
+    if (!igResponse.ok) {
+      throw new Error('Failed to get Instagram account');
+    }
+    
+    const igData = await igResponse.json();
+    
+    if (!igData.instagram_business_account?.id) {
+      throw new Error('No Instagram Business Account connected to this page');
+    }
+    
+    cachedAccountId = igData.instagram_business_account.id;
+    console.log('Instagram Business Account ID:', cachedAccountId);
+    return cachedAccountId;
+  } catch (error) {
+    console.error('Error getting Instagram Account ID:', error);
+    // Fallback to hardcoded ID if dynamic lookup fails
+    return '17841480089330113';
+  }
+}
 
 export interface InstagramProfile {
   id: string;
@@ -53,8 +110,9 @@ export interface InstagramMetrics {
 
 // Fetch Instagram profile data
 export async function fetchInstagramProfile(): Promise<InstagramProfile> {
+  const accountId = await getInstagramAccountId();
   const response = await fetch(
-    `${GRAPH_API_BASE}/${INSTAGRAM_ACCOUNT_ID}?` +
+    `${GRAPH_API_BASE}/${accountId}?` +
     new URLSearchParams({
       fields: 'id,username,name,profile_picture_url,followers_count,follows_count,media_count,biography,website',
       access_token: INSTAGRAM_ACCESS_TOKEN,
@@ -72,8 +130,9 @@ export async function fetchInstagramProfile(): Promise<InstagramProfile> {
 
 // Fetch recent media posts
 export async function fetchInstagramMedia(limit: number = 25): Promise<InstagramMedia[]> {
+  const accountId = await getInstagramAccountId();
   const response = await fetch(
-    `${GRAPH_API_BASE}/${INSTAGRAM_ACCOUNT_ID}/media?` +
+    `${GRAPH_API_BASE}/${accountId}/media?` +
     new URLSearchParams({
       fields: 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count',
       limit: limit.toString(),
@@ -94,8 +153,9 @@ export async function fetchInstagramMedia(limit: number = 25): Promise<Instagram
 // Fetch account insights (requires instagram_manage_insights permission)
 export async function fetchInstagramInsights(): Promise<InstagramInsights> {
   try {
+    const accountId = await getInstagramAccountId();
     const response = await fetch(
-      `${GRAPH_API_BASE}/${INSTAGRAM_ACCOUNT_ID}/insights?` +
+      `${GRAPH_API_BASE}/${accountId}/insights?` +
       new URLSearchParams({
         metric: 'impressions,reach,profile_views,accounts_engaged,total_interactions',
         period: 'day',
@@ -174,8 +234,10 @@ export async function fetchInstagramMetrics(): Promise<InstagramMetrics> {
 // Check if the token is valid
 export async function validateInstagramToken(): Promise<boolean> {
   try {
+    // First check if we can get the account ID
+    const accountId = await getInstagramAccountId();
     const response = await fetch(
-      `${GRAPH_API_BASE}/${INSTAGRAM_ACCOUNT_ID}?` +
+      `${GRAPH_API_BASE}/${accountId}?` +
       new URLSearchParams({
         fields: 'id',
         access_token: INSTAGRAM_ACCESS_TOKEN,
