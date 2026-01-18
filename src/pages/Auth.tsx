@@ -262,9 +262,9 @@ export default function Auth() {
           )}
         </div>
 
-        {/* Demo hint */}
+        {/* Info hint */}
         <p className="text-center text-xs text-muted-foreground mt-6">
-          Demo: usa cualquier email y contraseña (mín. 6 caracteres)
+          SportHub - Gestión de redes sociales para deportes
         </p>
       </div>
     </div>

@@ -1,17 +1,29 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { User, Session } from '@supabase/supabase-js';
+import { supabase } from '@/integrations/supabase/client';
 
-// Mock user type for now - will be replaced with Supabase types
-export interface User {
+export type AppRole = 'superadmin' | 'admin' | 'user';
+
+export interface Profile {
   id: string;
-  email: string;
-  fullName: string;
-  role: 'superadmin' | 'admin' | 'user';
-  avatar?: string;
-  createdAt: string;
+  user_id: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserWithProfile {
+  user: User;
+  profile: Profile | null;
+  role: AppRole;
 }
 
 interface AuthContextType {
   user: User | null;
+  session: Session | null;
+  profile: Profile | null;
+  role: AppRole;
   isLoading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: string | null }>;
@@ -21,103 +33,156 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock user for demo purposes - replace with Supabase when connected
-const MOCK_USERS: User[] = [
-  {
-    id: '1',
-    email: 'admin@sporthub.com',
-    fullName: 'Super Admin',
-    role: 'superadmin',
-    createdAt: new Date().toISOString(),
-  },
-];
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [role, setRole] = useState<AppRole>('user');
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    // Check for existing session
-    const storedUser = localStorage.getItem('sporthub_user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+  const fetchUserData = async (userId: string) => {
+    try {
+      // Fetch profile
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+      
+      if (profileData) {
+        setProfile(profileData as Profile);
+      }
+
+      // Fetch role using RPC function
+      const { data: roleData } = await supabase.rpc('get_user_role', { _user_id: userId });
+      if (roleData) {
+        setRole(roleData as AppRole);
+      }
+    } catch (error) {
+      console.error('Error fetching user data:', error);
     }
-    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        
+        // Defer Supabase calls with setTimeout to prevent deadlock
+        if (session?.user) {
+          setTimeout(() => {
+            fetchUserData(session.user.id);
+          }, 0);
+        } else {
+          setProfile(null);
+          setRole('user');
+        }
+        
+        setIsLoading(false);
+      }
+    );
+
+    // THEN check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      
+      if (session?.user) {
+        fetchUserData(session.user.id);
+      }
+      
+      setIsLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    setIsLoading(true);
     try {
-      // Mock authentication - replace with Supabase
-      await new Promise(resolve => setTimeout(resolve, 800));
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
       
-      const foundUser = MOCK_USERS.find(u => u.email === email);
-      if (foundUser && password.length >= 6) {
-        setUser(foundUser);
-        localStorage.setItem('sporthub_user', JSON.stringify(foundUser));
-        return { error: null };
+      if (error) {
+        if (error.message.includes('Invalid login credentials')) {
+          return { error: 'Credenciales inválidas. Verifica tu email y contraseña.' };
+        }
+        return { error: error.message };
       }
       
-      // For demo: create user on the fly
-      if (password.length >= 6) {
-        const newUser: User = {
-          id: Date.now().toString(),
-          email,
-          fullName: email.split('@')[0],
-          role: 'user',
-          createdAt: new Date().toISOString(),
-        };
-        setUser(newUser);
-        localStorage.setItem('sporthub_user', JSON.stringify(newUser));
-        return { error: null };
-      }
-      
-      return { error: 'Credenciales inválidas' };
-    } finally {
-      setIsLoading(false);
+      return { error: null };
+    } catch (error) {
+      return { error: 'Error inesperado al iniciar sesión' };
     }
   };
 
   const signUp = async (email: string, password: string, fullName: string) => {
-    setIsLoading(true);
     try {
-      // Mock registration - replace with Supabase
-      await new Promise(resolve => setTimeout(resolve, 800));
+      const redirectUrl = `${window.location.origin}/`;
       
-      if (MOCK_USERS.find(u => u.email === email)) {
-        return { error: 'Este email ya está registrado' };
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: redirectUrl,
+          data: {
+            full_name: fullName,
+          },
+        },
+      });
+      
+      if (error) {
+        if (error.message.includes('User already registered')) {
+          return { error: 'Este email ya está registrado' };
+        }
+        return { error: error.message };
       }
       
-      const newUser: User = {
-        id: Date.now().toString(),
-        email,
-        fullName,
-        role: 'user',
-        createdAt: new Date().toISOString(),
-      };
-      
-      MOCK_USERS.push(newUser);
-      setUser(newUser);
-      localStorage.setItem('sporthub_user', JSON.stringify(newUser));
       return { error: null };
-    } finally {
-      setIsLoading(false);
+    } catch (error) {
+      return { error: 'Error inesperado al crear cuenta' };
     }
   };
 
   const signOut = async () => {
+    await supabase.auth.signOut();
     setUser(null);
-    localStorage.removeItem('sporthub_user');
+    setSession(null);
+    setProfile(null);
+    setRole('user');
   };
 
   const resetPassword = async (email: string) => {
-    await new Promise(resolve => setTimeout(resolve, 800));
-    // Mock - replace with Supabase
-    return { error: null };
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth?mode=reset`,
+      });
+      
+      if (error) {
+        return { error: error.message };
+      }
+      
+      return { error: null };
+    } catch (error) {
+      return { error: 'Error al enviar el email de recuperación' };
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, signIn, signUp, signOut, resetPassword }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      session, 
+      profile, 
+      role, 
+      isLoading, 
+      signIn, 
+      signUp, 
+      signOut, 
+      resetPassword 
+    }}>
       {children}
     </AuthContext.Provider>
   );
