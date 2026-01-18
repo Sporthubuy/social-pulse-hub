@@ -31,13 +31,13 @@ export type SalesChannel = typeof SALES_CHANNELS[number];
 
 // Months mapping
 const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-const MONTHS_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
 export interface StockItem {
   id: string;
   itemCode: string;
   description: string;
   size: string;
+  color?: string;
   qtyImportada: number;
   stockByLocation: Record<string, number>;
   totalStock: number;
@@ -46,7 +46,6 @@ export interface StockItem {
   costoEnStock: number;
   precioMayorista?: number;
   precio: number;
-  precioUSA?: number;
   ventaTotal: number;
   brand: 'Magic Marine' | 'Brabo' | 'Princess';
 }
@@ -69,9 +68,10 @@ export interface SalesSummary {
 
 export interface StockSummary {
   totalProducts: number;
+  totalUnits: number;
   totalStockValue: number;
   totalStockValueUSD: number;
-  stockByBrand: { brand: string; quantity: number; value: number }[];
+  stockByBrand: { brand: string; quantity: number; value: number; products: number }[];
   stockByLocation: { location: string; quantity: number }[];
   lowStockProducts: StockItem[];
   allProducts: StockItem[];
@@ -111,6 +111,8 @@ function parseCurrency(value: string | number | undefined): number {
     .replace(/\s/g, '')
     .trim();
 
+  if (!cleaned) return 0;
+
   // Handle different number formats
   // If has both . and ,, determine which is decimal separator
   if (cleaned.includes('.') && cleaned.includes(',')) {
@@ -134,6 +136,15 @@ function parseCurrency(value: string | number | undefined): number {
   }
 
   const parsed = parseFloat(cleaned);
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+// Parse integer from cell
+function parseInteger(value: string | number | undefined): number {
+  if (value === undefined || value === null || value === '') return 0;
+  if (typeof value === 'number') return Math.floor(value);
+  const cleaned = value.toString().replace(/[^\d.-]/g, '');
+  const parsed = parseInt(cleaned, 10);
   return isNaN(parsed) ? 0 : parsed;
 }
 
@@ -246,111 +257,158 @@ export async function fetchSalesData(): Promise<SalesSummary> {
 export async function fetchStockData(): Promise<StockSummary> {
   try {
     const [mmRows, hockeyRows] = await Promise.all([
-      fetchSheetData(SHEETS.STOCK_MM, 'A1:N500'),
-      fetchSheetData(SHEETS.STOCK_HOCKEY, 'A1:N500'),
+      fetchSheetData(SHEETS.STOCK_MM, 'A1:N1000'),
+      fetchSheetData(SHEETS.STOCK_HOCKEY, 'A1:N1000'),
     ]);
 
     const allProducts: StockItem[] = [];
 
     // Parse Magic Marine stock (Data MM)
-    // Headers: Item Code, Item Description, Size, Qty Importada, TodoSailing, Deposito, Tata Barcos, Aeromarine, Costo unitario, Cto en stock, Precio en USA, Total Ventas
-    if (mmRows.length > 2) {
-      const mmHeaderRow = mmRows[1]; // Row 2 has headers
+    // Row 1: empty
+    // Row 2: "", "", "", "", "", "", "Stock Actual"
+    // Row 3: "", "Item Code", "Item Description", "Size", "", "Qty Importada", "TodoSailing", "Deposito", "Tata Barcos", "Aeromarine", "Costo unitario", "Cto en stock", "Precio en USA", "Total Ventas"
+    // Data starts at row 4 (index 3)
+    if (mmRows.length > 3) {
+      console.log('Processing Magic Marine data, rows:', mmRows.length);
 
-      for (let i = 2; i < mmRows.length; i++) {
+      for (let i = 3; i < mmRows.length; i++) {
         const row = mmRows[i];
-        if (!row || !row[0] || !row[1]) continue;
+        if (!row || row.length < 2) continue;
 
-        const itemCode = row[0]?.toString().trim();
-        const description = row[1]?.toString().trim();
+        // Column B (index 1) = Item Code
+        const itemCode = row[1]?.toString().trim();
+        // Column C (index 2) = Item Description
+        const description = row[2]?.toString().trim();
 
-        if (!itemCode || itemCode.toLowerCase() === 'item code') continue;
+        if (!itemCode || !description || itemCode.toLowerCase() === 'item code') continue;
 
+        // Column D (index 3) = Size
+        const size = row[3]?.toString().trim() || '';
+        // Column E (index 4) = Color (sometimes)
+        const color = row[4]?.toString().trim() || '';
+        // Column F (index 5) = Qty Importada
+        const qtyImportada = parseInteger(row[5]);
+
+        // Stock locations: G=TodoSailing(6), H=Deposito(7), I=Tata Barcos(8), J=Aeromarine(9)
         const stockLocations: Record<string, number> = {
-          'TodoSailing': parseInt(row[4]) || 0,
-          'Deposito': parseInt(row[5]) || 0,
-          'Tata Barcos': parseInt(row[6]) || 0,
-          'Aeromarine': parseInt(row[7]) || 0,
+          'TodoSailing': parseInteger(row[6]),
+          'Deposito': parseInteger(row[7]),
+          'Tata Barcos': parseInteger(row[8]),
+          'Aeromarine': parseInteger(row[9]),
         };
 
         const totalStock = Object.values(stockLocations).reduce((a, b) => a + b, 0);
+
+        // K=Costo unitario(10), L=Cto en stock(11), M=Precio en USA(12), N=Total Ventas(13)
+        const costoUnitario = parseCurrency(row[10]);
+        const costoEnStock = parseCurrency(row[11]);
+        const precio = parseCurrency(row[12]);
+        const ventaTotal = parseCurrency(row[13]);
 
         allProducts.push({
           id: `mm-${i}`,
           itemCode,
           description,
-          size: row[2]?.toString() || '',
-          qtyImportada: parseInt(row[3]) || 0,
+          size,
+          color,
+          qtyImportada,
           stockByLocation: stockLocations,
           totalStock,
-          costoUnitario: parseCurrency(row[8]),
-          costoUnitarioUSD: 0,
-          costoEnStock: parseCurrency(row[9]),
-          precio: parseCurrency(row[10]),
-          precioUSA: parseCurrency(row[10]),
-          ventaTotal: parseCurrency(row[11]),
+          costoUnitario,
+          costoUnitarioUSD: costoUnitario, // Already in USD
+          costoEnStock,
+          precio,
+          ventaTotal,
           brand: 'Magic Marine',
         });
       }
     }
 
     // Parse Hockey stock (Data Hockey) - Brabo and Princess
-    // Headers: Item Code, Item Description, Size, Qty Importada, Boomerang, Casa, Sofia/Lucia, Costo unitario, Cto unit USD, Cto en stock, Precio Mayorista, Precio, Venta Total
-    if (hockeyRows.length > 2) {
-      for (let i = 2; i < hockeyRows.length; i++) {
+    // Row 1: empty
+    // Row 2: "", "", "", "", "", "Stock Actual"
+    // Row 3: "", "Item Code", "Item Description", "Size", "Qty Importada", "Boomerang", "Casa", "Sofia/Lucia", "Costo unitario", "Cto unit USD", "Cto en stock", "Precio Mayorista", "Precio ", "Venta Total "
+    // Data starts at row 4 (index 3)
+    if (hockeyRows.length > 3) {
+      console.log('Processing Hockey data, rows:', hockeyRows.length);
+
+      for (let i = 3; i < hockeyRows.length; i++) {
         const row = hockeyRows[i];
-        if (!row || !row[0] || !row[1]) continue;
+        if (!row || row.length < 2) continue;
 
-        const itemCode = row[0]?.toString().trim();
-        const description = row[1]?.toString().trim();
+        // Column B (index 1) = Item Code
+        const itemCode = row[1]?.toString().trim();
+        // Column C (index 2) = Item Description
+        const description = row[2]?.toString().trim();
 
-        if (!itemCode || itemCode.toLowerCase() === 'item code') continue;
+        if (!itemCode || !description || itemCode.toLowerCase() === 'item code') continue;
 
-        // Determine brand based on item code or description
-        let brand: 'Brabo' | 'Princess' = 'Brabo';
-        if (description.toLowerCase().includes('princess') || itemCode.toLowerCase().includes('princess')) {
-          brand = 'Princess';
-        }
+        // Column D (index 3) = Size
+        const size = row[3]?.toString().trim() || '';
+        // Column E (index 4) = Qty Importada
+        const qtyImportada = parseInteger(row[4]);
 
+        // Stock locations: F=Boomerang(5), G=Casa(6), H=Sofia/Lucia(7)
         const stockLocations: Record<string, number> = {
-          'Boomerang': parseInt(row[4]) || 0,
-          'Casa': parseInt(row[5]) || 0,
-          'Sofia/Lucia': parseInt(row[6]) || 0,
+          'Boomerang': parseInteger(row[5]),
+          'Casa': parseInteger(row[6]),
+          'Sofia/Lucia': parseInteger(row[7]),
         };
 
         const totalStock = Object.values(stockLocations).reduce((a, b) => a + b, 0);
+
+        // I=Costo unitario(8), J=Cto unit USD(9), K=Cto en stock(10), L=Precio Mayorista(11), M=Precio(12), N=Venta Total(13)
+        const costoUnitario = parseCurrency(row[8]);
+        const costoUnitarioUSD = parseCurrency(row[9]);
+        const costoEnStock = parseCurrency(row[10]);
+        const precioMayorista = parseCurrency(row[11]);
+        const precio = parseCurrency(row[12]);
+        const ventaTotal = parseCurrency(row[13]);
+
+        // Determine brand based on item code prefix or description
+        let brand: 'Brabo' | 'Princess' = 'Brabo';
+        const descLower = description.toLowerCase();
+        const codeLower = itemCode.toLowerCase();
+
+        if (descLower.includes('princess') || codeLower.startsWith('pr') || codeLower.includes('princess')) {
+          brand = 'Princess';
+        }
 
         allProducts.push({
           id: `hockey-${i}`,
           itemCode,
           description,
-          size: row[2]?.toString() || '',
-          qtyImportada: parseInt(row[3]) || 0,
+          size,
+          qtyImportada,
           stockByLocation: stockLocations,
           totalStock,
-          costoUnitario: parseCurrency(row[7]),
-          costoUnitarioUSD: parseCurrency(row[8]),
-          costoEnStock: parseCurrency(row[9]),
-          precioMayorista: parseCurrency(row[10]),
-          precio: parseCurrency(row[11]),
-          ventaTotal: parseCurrency(row[12]),
+          costoUnitario,
+          costoUnitarioUSD,
+          costoEnStock,
+          precioMayorista,
+          precio,
+          ventaTotal,
           brand,
         });
       }
     }
 
+    console.log('Total products loaded:', allProducts.length);
+
     // Calculate summaries
     const totalProducts = allProducts.length;
+    const totalUnits = allProducts.reduce((sum, p) => sum + p.totalStock, 0);
     const totalStockValue = allProducts.reduce((sum, p) => sum + p.costoEnStock, 0);
     const totalStockValueUSD = allProducts.reduce((sum, p) => sum + (p.costoUnitarioUSD * p.totalStock), 0);
 
     // Stock by brand
-    const brandMap = new Map<string, { quantity: number; value: number }>();
+    const brandMap = new Map<string, { quantity: number; value: number; products: number }>();
     allProducts.forEach(p => {
-      const current = brandMap.get(p.brand) || { quantity: 0, value: 0 };
+      const current = brandMap.get(p.brand) || { quantity: 0, value: 0, products: 0 };
       brandMap.set(p.brand, {
         quantity: current.quantity + p.totalStock,
         value: current.value + p.costoEnStock,
+        products: current.products + 1,
       });
     });
 
@@ -362,22 +420,26 @@ export async function fetchStockData(): Promise<StockSummary> {
     const locationMap = new Map<string, number>();
     allProducts.forEach(p => {
       Object.entries(p.stockByLocation).forEach(([loc, qty]) => {
-        locationMap.set(loc, (locationMap.get(loc) || 0) + qty);
+        if (qty > 0) {
+          locationMap.set(loc, (locationMap.get(loc) || 0) + qty);
+        }
       });
     });
 
     const stockByLocation = Array.from(locationMap.entries())
       .map(([location, quantity]) => ({ location, quantity }))
+      .filter(l => l.quantity > 0)
       .sort((a, b) => b.quantity - a.quantity);
 
-    // Low stock products (less than 3 units)
+    // Low stock products (1-5 units total)
     const lowStockProducts = allProducts
-      .filter(p => p.totalStock > 0 && p.totalStock <= 3)
+      .filter(p => p.totalStock > 0 && p.totalStock <= 5)
       .sort((a, b) => a.totalStock - b.totalStock)
-      .slice(0, 20);
+      .slice(0, 30);
 
     return {
       totalProducts,
+      totalUnits,
       totalStockValue,
       totalStockValueUSD,
       stockByBrand,
@@ -405,6 +467,7 @@ function getEmptySalesSummary(): SalesSummary {
 function getEmptyStockSummary(): StockSummary {
   return {
     totalProducts: 0,
+    totalUnits: 0,
     totalStockValue: 0,
     totalStockValueUSD: 0,
     stockByBrand: [],
@@ -425,11 +488,9 @@ export type SaleRecord = {
 };
 
 export function calculateSalesSummary(sales: SaleRecord[]) {
-  // This is now handled by fetchSalesData directly
   return getEmptySalesSummary();
 }
 
 export function calculateStockSummary(stock: StockItem[]) {
-  // This is now handled by fetchStockData directly
   return getEmptyStockSummary();
 }

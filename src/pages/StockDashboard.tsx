@@ -125,6 +125,11 @@ export default function StockDashboard() {
             icon={<Package className="w-5 h-5" />}
           />
           <MetricCard
+            title="Unidades en Stock"
+            value={summary?.totalUnits.toString() || '-'}
+            icon={<Package className="w-5 h-5" />}
+          />
+          <MetricCard
             title="Valor en Stock"
             value={summary ? formatCurrency(summary.totalStockValue) : '-'}
             icon={<DollarSign className="w-5 h-5" />}
@@ -133,11 +138,6 @@ export default function StockDashboard() {
             title="Stock Bajo"
             value={summary?.lowStockProducts.length.toString() || '-'}
             icon={<AlertTriangle className="w-5 h-5 text-yellow-500" />}
-          />
-          <MetricCard
-            title="Ubicaciones"
-            value={summary?.stockByLocation.length.toString() || '-'}
-            icon={<MapPin className="w-5 h-5" />}
           />
         </div>
 
@@ -313,7 +313,8 @@ export default function StockDashboard() {
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Producto</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Talle</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Marca</th>
-                  <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">Stock</th>
+                  <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">Total</th>
+                  <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">Ubicaciones</th>
                   <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Costo</th>
                   <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Precio</th>
                   <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Ventas</th>
@@ -343,13 +344,31 @@ export default function StockDashboard() {
                         className={`font-semibold ${
                           item.totalStock === 0
                             ? 'text-red-500'
-                            : item.totalStock <= 3
+                            : item.totalStock <= 5
                             ? 'text-yellow-500'
                             : 'text-foreground'
                         }`}
                       >
                         {item.totalStock}
                       </span>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <div className="flex flex-wrap gap-1 justify-center">
+                        {Object.entries(item.stockByLocation)
+                          .filter(([_, qty]) => qty > 0)
+                          .map(([loc, qty]) => (
+                            <span
+                              key={loc}
+                              className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+                              title={loc}
+                            >
+                              {loc.substring(0, 3)}: {qty}
+                            </span>
+                          ))}
+                        {Object.values(item.stockByLocation).every(qty => qty === 0) && (
+                          <span className="text-xs text-red-500">Sin stock</span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3 px-4 text-right text-sm text-muted-foreground">
                       {formatCurrency(item.costoUnitario)}
