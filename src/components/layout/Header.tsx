@@ -25,7 +25,6 @@ export function Header() {
   };
 
   const navItems = [
-    { label: 'Redes Sociales', href: '/dashboard' },
     { label: 'Stock', href: '/dashboard/stock' },
     { label: 'Facturacion', href: '/dashboard/sales' },
   ];
@@ -34,7 +33,7 @@ export function Header() {
     <header className="sticky top-0 z-50 w-full border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
       <div className="container flex h-16 items-center justify-between">
         {/* Logo */}
-        <Link to="/dashboard" className="flex items-center">
+        <Link to="/dashboard/stock" className="flex items-center">
           <Logo size="sm" />
         </Link>
 

@@ -7,7 +7,6 @@ import { AuthProvider } from "@/lib/auth-context";
 import { ThemeProvider } from "@/lib/theme-context";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
-import Dashboard from "./pages/Dashboard";
 import StockDashboard from "./pages/StockDashboard";
 import SalesDashboard from "./pages/SalesDashboard";
 import Profile from "./pages/Profile";
@@ -27,9 +26,7 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/auth" element={<Auth />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/dashboard/instagram" element={<Dashboard />} />
-              <Route path="/dashboard/facebook" element={<Dashboard />} />
+              <Route path="/dashboard" element={<StockDashboard />} />
               <Route path="/dashboard/stock" element={<StockDashboard />} />
               <Route path="/dashboard/sales" element={<SalesDashboard />} />
               <Route path="/auth/callback/meta" element={<MetaCallback />} />
