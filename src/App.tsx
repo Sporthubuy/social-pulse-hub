@@ -8,6 +8,8 @@ import { ThemeProvider } from "@/lib/theme-context";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
+import StockDashboard from "./pages/StockDashboard";
+import SalesDashboard from "./pages/SalesDashboard";
 import Profile from "./pages/Profile";
 import MetaCallback from "./pages/MetaCallback";
 import NotFound from "./pages/NotFound";
@@ -28,6 +30,8 @@ const App = () => (
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/dashboard/instagram" element={<Dashboard />} />
               <Route path="/dashboard/facebook" element={<Dashboard />} />
+              <Route path="/dashboard/stock" element={<StockDashboard />} />
+              <Route path="/dashboard/sales" element={<SalesDashboard />} />
               <Route path="/auth/callback/meta" element={<MetaCallback />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/settings" element={<Profile />} />

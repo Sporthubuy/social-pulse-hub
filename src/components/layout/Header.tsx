@@ -25,9 +25,9 @@ export function Header() {
   };
 
   const navItems = [
-    { label: 'Dashboard', href: '/dashboard' },
-    { label: 'Instagram', href: '/dashboard/instagram' },
-    { label: 'Facebook', href: '/dashboard/facebook' },
+    { label: 'Redes Sociales', href: '/dashboard' },
+    { label: 'Stock', href: '/dashboard/stock' },
+    { label: 'Facturacion', href: '/dashboard/sales' },
   ];
 
   return (
