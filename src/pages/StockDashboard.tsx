@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Package, AlertTriangle, DollarSign, RefreshCw, MapPin, Search } from 'lucide-react';
+import { Package, DollarSign, RefreshCw, MapPin, Search } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { MetricCard } from '@/components/dashboard/MetricCard';
 import { Button } from '@/components/ui/button';
@@ -118,7 +118,7 @@ export default function StockDashboard() {
         </div>
 
         {/* Metrics Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           <MetricCard
             title="Total Productos"
             value={summary?.totalProducts.toString() || '-'}
@@ -133,11 +133,6 @@ export default function StockDashboard() {
             title="Valor en Stock"
             value={summary ? formatCurrency(summary.totalStockValue) : '-'}
             icon={<DollarSign className="w-5 h-5" />}
-          />
-          <MetricCard
-            title="Stock Bajo"
-            value={summary?.lowStockProducts.length.toString() || '-'}
-            icon={<AlertTriangle className="w-5 h-5 text-yellow-500" />}
           />
         </div>
 
@@ -221,54 +216,6 @@ export default function StockDashboard() {
             </div>
           </div>
         </div>
-
-        {/* Low Stock Alert Table */}
-        {summary && summary.lowStockProducts.length > 0 && (
-          <div className="bg-card rounded-xl border border-border p-5">
-            <h3 className="text-lg font-display font-semibold text-foreground mb-4 flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-yellow-500" />
-              Productos con Stock Bajo (≤3 unidades)
-            </h3>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Codigo</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Producto</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Talle</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Marca</th>
-                    <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">Stock</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {summary.lowStockProducts.map((item) => (
-                    <tr key={item.id} className="border-b border-border/50 hover:bg-muted/50">
-                      <td className="py-3 px-4 text-sm text-muted-foreground font-mono">{item.itemCode}</td>
-                      <td className="py-3 px-4 text-sm text-foreground">{item.description}</td>
-                      <td className="py-3 px-4 text-sm text-muted-foreground">{item.size}</td>
-                      <td className="py-3 px-4">
-                        <span
-                          className="text-xs px-2 py-1 rounded-full"
-                          style={{
-                            backgroundColor: `${BRAND_COLORS[item.brand] || '#6B7280'}20`,
-                            color: BRAND_COLORS[item.brand] || '#6B7280',
-                          }}
-                        >
-                          {item.brand}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <span className="text-sm font-semibold text-yellow-500">
-                          {item.totalStock}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
 
         {/* Full Inventory Table */}
         <div className="bg-card rounded-xl border border-border p-5">

@@ -1,81 +1,53 @@
-import { Users, Heart, MessageCircle, Eye, Instagram, Facebook, RefreshCw } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Users, Heart, MessageCircle, Eye, Instagram, Facebook, RefreshCw, ExternalLink } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { MetricCard } from '@/components/dashboard/MetricCard';
-import { SocialConnector } from '@/components/dashboard/SocialConnector';
-import { RecentActivity } from '@/components/dashboard/RecentActivity';
-import { useSocialConnections } from '@/hooks/use-social-connections';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-
-// Mock activities - these would come from real API in production
-const mockActivities = [
-  {
-    id: '1',
-    type: 'like' as const,
-    message: 'Tu publicación recibió 150 likes nuevos',
-    time: 'Hace 5 minutos',
-    platform: 'instagram' as const,
-  },
-  {
-    id: '2',
-    type: 'follow' as const,
-    message: '25 nuevos seguidores esta semana',
-    time: 'Hace 1 hora',
-    platform: 'facebook' as const,
-  },
-  {
-    id: '3',
-    type: 'comment' as const,
-    message: 'Nuevo comentario en "Entrenamiento de hoy"',
-    time: 'Hace 2 horas',
-    platform: 'instagram' as const,
-  },
-  {
-    id: '4',
-    type: 'share' as const,
-    message: 'Tu video fue compartido 12 veces',
-    time: 'Hace 3 horas',
-    platform: 'facebook' as const,
-  },
-];
+import {
+  fetchInstagramMetrics,
+  type InstagramMetrics,
+} from '@/services/instagram-api';
 
 export default function Dashboard() {
-  const { connections, socialData, isLoading, connect, disconnect, refreshData } = useSocialConnections();
+  const [instagramData, setInstagramData] = useState<InstagramMetrics | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const handleConnect = (platform: 'instagram' | 'facebook') => {
-    toast({
-      title: 'Conectando...',
-      description: `Redirigiendo a Meta para autorizar ${platform === 'instagram' ? 'Instagram' : 'Facebook'}`,
-    });
-    connect(platform);
+  const loadData = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await fetchInstagramMetrics();
+      setInstagramData(data);
+      toast({
+        title: 'Datos cargados',
+        description: `@${data.profile.username} - ${data.profile.followers_count} seguidores`,
+      });
+    } catch (err) {
+      console.error('Error loading Instagram data:', err);
+      setError('No se pudieron cargar los datos de Instagram');
+      toast({
+        title: 'Error',
+        description: 'No se pudieron cargar los datos de Instagram',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleDisconnect = (platform: 'instagram' | 'facebook') => {
-    disconnect(platform);
-    toast({
-      title: 'Desconectado',
-      description: `Tu cuenta de ${platform === 'instagram' ? 'Instagram' : 'Facebook'} ha sido desconectada`,
-    });
-  };
+  useEffect(() => {
+    loadData();
+  }, []);
 
-  const handleRefresh = async () => {
+  const handleRefresh = () => {
     toast({
       title: 'Actualizando...',
-      description: 'Obteniendo datos más recientes',
+      description: 'Obteniendo datos de Instagram',
     });
-
-    if (connections.instagram.isConnected) {
-      await refreshData('instagram');
-    }
-    if (connections.facebook.isConnected) {
-      await refreshData('facebook');
-    }
-
-    toast({
-      title: 'Actualizado',
-      description: 'Los datos han sido actualizados',
-    });
+    loadData();
   };
 
   const formatNumber = (num: number) => {
@@ -85,26 +57,16 @@ export default function Dashboard() {
     if (num >= 1000) {
       return (num / 1000).toFixed(1) + 'K';
     }
-    return num.toString();
+    return num.toLocaleString('es-AR');
   };
 
-  // Calculate combined metrics from connected platforms
-  const combinedMetrics = {
-    totalFollowers:
-      (socialData.instagram.metrics?.followers || 0) +
-      (socialData.facebook.metrics?.followers || 0),
-    totalLikes:
-      (socialData.instagram.metrics?.likes || 0) +
-      (socialData.facebook.metrics?.likes || 0),
-    totalComments:
-      (socialData.instagram.metrics?.comments || 0) +
-      (socialData.facebook.metrics?.comments || 0),
-    totalReach:
-      (socialData.instagram.metrics?.reach || 0) +
-      (socialData.facebook.metrics?.reach || 0),
+  const formatDate = (timestamp: string) => {
+    const date = new Date(timestamp);
+    return date.toLocaleDateString('es-AR', {
+      day: 'numeric',
+      month: 'short',
+    });
   };
-
-  const hasConnectedAccounts = connections.instagram.isConnected || connections.facebook.isConnected;
 
   return (
     <DashboardLayout>
@@ -113,52 +75,68 @@ export default function Dashboard() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">
-              Dashboard
+              Redes Sociales
             </h1>
             <p className="text-muted-foreground mt-1">
-              Resumen de tus redes sociales
+              Métricas de Instagram - @{instagramData?.profile.username || 'sporthubuy'}
             </p>
           </div>
-          {hasConnectedAccounts && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={isLoading}
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              Actualizar
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Actualizar
+          </Button>
+        </div>
+
+        {/* Profile Card */}
+        {instagramData && (
+          <div className="bg-card rounded-xl border border-border p-5">
+            <div className="flex items-center gap-4">
+              {instagramData.profile.profile_picture_url && (
+                <img
+                  src={instagramData.profile.profile_picture_url}
+                  alt={instagramData.profile.username}
+                  className="w-16 h-16 rounded-full object-cover"
+                />
+              )}
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-semibold text-foreground">
+                    @{instagramData.profile.username}
+                  </h2>
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
+                    <Instagram className="w-3 h-3 text-white" />
+                  </div>
+                </div>
+                {instagramData.profile.biography && (
+                  <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                    {instagramData.profile.biography}
+                  </p>
+                )}
+              </div>
+              <a
+                href={`https://instagram.com/${instagramData.profile.username}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <ExternalLink className="w-5 h-5" />
+              </a>
+            </div>
+          </div>
+        )}
+
+        {/* Error message */}
+        {error && (
+          <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-6 text-center">
+            <p className="text-destructive">{error}</p>
+            <Button variant="outline" size="sm" onClick={handleRefresh} className="mt-4">
+              Reintentar
             </Button>
-          )}
-        </div>
-
-        {/* Social Connectors */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <SocialConnector
-            platform="instagram"
-            isConnected={connections.instagram.isConnected}
-            username={connections.instagram.username}
-            onConnect={() => handleConnect('instagram')}
-            onDisconnect={() => handleDisconnect('instagram')}
-          />
-          <SocialConnector
-            platform="facebook"
-            isConnected={connections.facebook.isConnected}
-            username={connections.facebook.username}
-            onConnect={() => handleConnect('facebook')}
-            onDisconnect={() => handleDisconnect('facebook')}
-          />
-        </div>
-
-        {/* Info message if no accounts connected */}
-        {!hasConnectedAccounts && (
-          <div className="bg-primary/5 border border-primary/20 rounded-xl p-6 text-center">
-            <h3 className="text-lg font-semibold text-foreground mb-2">
-              Conecta tus cuentas para ver tus métricas
-            </h3>
-            <p className="text-muted-foreground text-sm">
-              Conecta tu cuenta de Instagram Business o Facebook Page para empezar a ver tus estadísticas en tiempo real.
-            </p>
           </div>
         )}
 
@@ -166,88 +144,177 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
             title="Seguidores"
-            value={hasConnectedAccounts ? formatNumber(combinedMetrics.totalFollowers) : '-'}
-            change={hasConnectedAccounts ? 0 : undefined}
+            value={instagramData ? formatNumber(instagramData.profile.followers_count) : '-'}
             icon={<Users className="w-5 h-5" />}
           />
           <MetricCard
-            title="Likes"
-            value={hasConnectedAccounts ? formatNumber(combinedMetrics.totalLikes) : '-'}
-            change={hasConnectedAccounts ? 0 : undefined}
+            title="Siguiendo"
+            value={instagramData ? formatNumber(instagramData.profile.follows_count) : '-'}
+            icon={<Users className="w-5 h-5" />}
+          />
+          <MetricCard
+            title="Publicaciones"
+            value={instagramData ? formatNumber(instagramData.profile.media_count) : '-'}
+            icon={<Instagram className="w-5 h-5" />}
+          />
+          <MetricCard
+            title="Engagement"
+            value={instagramData ? `${instagramData.avgEngagement.toFixed(2)}%` : '-'}
             icon={<Heart className="w-5 h-5" />}
-          />
-          <MetricCard
-            title="Comentarios"
-            value={hasConnectedAccounts ? formatNumber(combinedMetrics.totalComments) : '-'}
-            change={hasConnectedAccounts ? 0 : undefined}
-            icon={<MessageCircle className="w-5 h-5" />}
-          />
-          <MetricCard
-            title="Alcance"
-            value={hasConnectedAccounts ? formatNumber(combinedMetrics.totalReach) : '-'}
-            change={hasConnectedAccounts ? 0 : undefined}
-            icon={<Eye className="w-5 h-5" />}
           />
         </div>
 
-        {/* Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Recent Activity */}
-          <div className="lg:col-span-2">
-            <RecentActivity activities={mockActivities} />
-          </div>
+        {/* Engagement Stats */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <MetricCard
+            title="Total Likes (últimos posts)"
+            value={instagramData ? formatNumber(instagramData.totalLikes) : '-'}
+            icon={<Heart className="w-5 h-5 text-red-500" />}
+          />
+          <MetricCard
+            title="Total Comentarios"
+            value={instagramData ? formatNumber(instagramData.totalComments) : '-'}
+            icon={<MessageCircle className="w-5 h-5 text-blue-500" />}
+          />
+          <MetricCard
+            title="Interacciones Totales"
+            value={instagramData ? formatNumber(instagramData.totalLikes + instagramData.totalComments) : '-'}
+            icon={<Eye className="w-5 h-5 text-purple-500" />}
+          />
+        </div>
 
-          {/* Quick Stats */}
-          <div className="space-y-4">
-            <div className="bg-card rounded-xl border border-border p-5">
-              <h3 className="text-lg font-display font-semibold text-foreground mb-4">
-                Por Plataforma
-              </h3>
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
-                    <Instagram className="w-5 h-5 text-white" />
+        {/* Recent Posts */}
+        {instagramData && instagramData.recentMedia.length > 0 && (
+          <div className="bg-card rounded-xl border border-border p-5">
+            <h3 className="text-lg font-display font-semibold text-foreground mb-4">
+              Publicaciones Recientes
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {instagramData.recentMedia.slice(0, 10).map((post) => (
+                <a
+                  key={post.id}
+                  href={post.permalink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group relative aspect-square rounded-lg overflow-hidden bg-muted"
+                >
+                  <img
+                    src={post.media_type === 'VIDEO' ? post.thumbnail_url : post.media_url}
+                    alt={post.caption?.substring(0, 50) || 'Post'}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                  />
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <div className="text-white text-center">
+                      <div className="flex items-center gap-3 text-sm">
+                        <span className="flex items-center gap-1">
+                          <Heart className="w-4 h-4" />
+                          {formatNumber(post.like_count)}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <MessageCircle className="w-4 h-4" />
+                          {formatNumber(post.comments_count)}
+                        </span>
+                      </div>
+                      <p className="text-xs mt-1 opacity-75">{formatDate(post.timestamp)}</p>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-foreground">Instagram</p>
-                    <p className="text-xs text-muted-foreground">
-                      {connections.instagram.isConnected
-                        ? `${formatNumber(socialData.instagram.metrics?.followers || 0)} seguidores`
-                        : 'No conectado'}
-                    </p>
-                  </div>
-                  {connections.instagram.isConnected && (
-                    <span className="text-sm font-semibold text-sport-success">Conectado</span>
+                  {post.media_type === 'VIDEO' && (
+                    <div className="absolute top-2 right-2 bg-black/50 rounded px-1.5 py-0.5 text-white text-xs">
+                      Video
+                    </div>
                   )}
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
-                    <Facebook className="w-5 h-5 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-foreground">Facebook</p>
-                    <p className="text-xs text-muted-foreground">
-                      {connections.facebook.isConnected
-                        ? `${formatNumber(socialData.facebook.metrics?.followers || 0)} seguidores`
-                        : 'No conectado'}
-                    </p>
-                  </div>
-                  {connections.facebook.isConnected && (
-                    <span className="text-sm font-semibold text-sport-success">Conectado</span>
+                  {post.media_type === 'CAROUSEL_ALBUM' && (
+                    <div className="absolute top-2 right-2 bg-black/50 rounded px-1.5 py-0.5 text-white text-xs">
+                      Album
+                    </div>
                   )}
-                </div>
-              </div>
+                </a>
+              ))}
             </div>
+          </div>
+        )}
 
-            {/* Tips Card */}
-            <div className="bg-gradient-to-br from-primary/10 to-primary/5 rounded-xl border border-primary/20 p-5">
-              <h3 className="text-lg font-display font-semibold text-foreground mb-2">
-                Tip del dia
+        {/* Top Posts Table */}
+        {instagramData && instagramData.recentMedia.length > 0 && (
+          <div className="bg-card rounded-xl border border-border p-5">
+            <h3 className="text-lg font-display font-semibold text-foreground mb-4">
+              Rendimiento de Posts
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Fecha</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Tipo</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Caption</th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Likes</th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Comentarios</th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Engagement</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {instagramData.recentMedia
+                    .sort((a, b) => (b.like_count + b.comments_count) - (a.like_count + a.comments_count))
+                    .slice(0, 10)
+                    .map((post) => {
+                      const engagement = ((post.like_count + post.comments_count) / instagramData.profile.followers_count) * 100;
+                      return (
+                        <tr key={post.id} className="border-b border-border/50 hover:bg-muted/50">
+                          <td className="py-3 px-4 text-sm text-muted-foreground">
+                            {formatDate(post.timestamp)}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className={`text-xs px-2 py-1 rounded-full ${
+                              post.media_type === 'VIDEO'
+                                ? 'bg-purple-500/20 text-purple-500'
+                                : post.media_type === 'CAROUSEL_ALBUM'
+                                ? 'bg-blue-500/20 text-blue-500'
+                                : 'bg-pink-500/20 text-pink-500'
+                            }`}>
+                              {post.media_type === 'VIDEO' ? 'Video' : post.media_type === 'CAROUSEL_ALBUM' ? 'Album' : 'Imagen'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-sm text-foreground max-w-xs truncate">
+                            <a
+                              href={post.permalink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="hover:text-primary"
+                            >
+                              {post.caption?.substring(0, 50) || 'Sin caption'}
+                              {post.caption && post.caption.length > 50 ? '...' : ''}
+                            </a>
+                          </td>
+                          <td className="py-3 px-4 text-right text-sm font-semibold text-red-500">
+                            {formatNumber(post.like_count)}
+                          </td>
+                          <td className="py-3 px-4 text-right text-sm font-semibold text-blue-500">
+                            {formatNumber(post.comments_count)}
+                          </td>
+                          <td className="py-3 px-4 text-right text-sm font-semibold text-green-500">
+                            {engagement.toFixed(2)}%
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Facebook placeholder */}
+        <div className="bg-card rounded-xl border border-border p-5">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+              <Facebook className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h3 className="text-lg font-display font-semibold text-foreground">
+                Facebook
               </h3>
               <p className="text-sm text-muted-foreground">
-                {!hasConnectedAccounts
-                  ? 'Conecta tu cuenta de Instagram Business o Facebook Page para empezar a ver tus métricas reales.'
-                  : 'Los posts con videos tienen 38% más engagement. Considera agregar más contenido en video.'}
+                Próximamente - Conecta tu página de Facebook
               </p>
             </div>
           </div>

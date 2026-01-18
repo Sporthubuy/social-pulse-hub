@@ -357,9 +357,9 @@ export async function fetchStockData(): Promise<StockSummary> {
 
         const totalStock = Object.values(stockLocations).reduce((a, b) => a + b, 0);
 
-        // I=Costo unitario(8), J=Cto unit USD(9), K=Cto en stock(10), L=Precio Mayorista(11), M=Precio(12), N=Venta Total(13)
-        const costoUnitario = parseCurrency(row[8]);
-        const costoUnitarioUSD = parseCurrency(row[9]);
+        // I=Costo unitario ARS(8), J=Cto unit USD(9), K=Cto en stock(10), L=Precio Mayorista(11), M=Precio(12), N=Venta Total(13)
+        const costoUnitarioARS = parseCurrency(row[8]); // Column I - Costo unitario en pesos
+        const costoUnitarioUSD = parseCurrency(row[9]); // Column J - Cto unit USD (el que se muestra)
         const costoEnStock = parseCurrency(row[10]);
         const precioMayorista = parseCurrency(row[11]);
         const precio = parseCurrency(row[12]);
@@ -382,7 +382,7 @@ export async function fetchStockData(): Promise<StockSummary> {
           qtyImportada,
           stockByLocation: stockLocations,
           totalStock,
-          costoUnitario,
+          costoUnitario: costoUnitarioUSD, // Mostrar el costo en USD (columna J)
           costoUnitarioUSD,
           costoEnStock,
           precioMayorista,
